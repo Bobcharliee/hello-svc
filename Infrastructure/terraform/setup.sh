@@ -1,5 +1,5 @@
 #!/bin/bash
-set -e
+
 
 # Log everything
 exec > /var/log/bootstrap.log 2>&1
@@ -38,23 +38,84 @@ docker run -d --restart always -p 8081:8080 --name staging hello-svc
 echo "Creating Nginx config..."
 cat <<EOF > /etc/nginx/conf.d/hello.conf
 
-# Production - HTTP Redirect
+
+# PRODUCTION – HTTP REDIRECT
+
 server {
     listen 80;
     server_name production.anyth.store;
 
     return 301 https://$host$request_uri;
-
 }
 
-# Staging - HTTP Redirect
+
+# STAGING – HTTP REDIRECT
+
 server {
     listen 80;
     server_name staging.anyth.store;
 
     return 301 https://$host$request_uri;
-
 }
+
+
+# PRODUCTION – HTTPS
+
+server {
+    listen 443 ssl http2;
+    server_name production.anyth.store;
+
+    # TLS (Let's Encrypt)
+    ssl_certificate     /etc/letsencrypt/live/production.anyth.store/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/production.anyth.store/privkey.pem;
+
+    include /etc/letsencrypt/options-ssl-nginx.conf;
+    ssl_dhparam /etc/letsencrypt/ssl-dhparams.pem;
+
+    # Logs
+    access_log /var/log/nginx/production_access.log;
+    error_log  /var/log/nginx/production_error.log;
+
+    location / {
+        proxy_pass http://127.0.0.1:8080;
+
+        proxy_http_version 1.1;
+        proxy_set_header Host              $host;
+        proxy_set_header X-Real-IP         $remote_addr;
+        proxy_set_header X-Forwarded-For   $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+}
+
+
+# STAGING – HTTPS
+
+server {
+    listen 443 ssl http2;
+    server_name staging.anyth.store;
+
+    # TLS (Let's Encrypt)
+    ssl_certificate     /etc/letsencrypt/live/production.anyth.store/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/production.anyth.store/privkey.pem;
+
+    include /etc/letsencrypt/options-ssl-nginx.conf;
+    ssl_dhparam /etc/letsencrypt/ssl-dhparams.pem;
+
+    # Logs
+    access_log /var/log/nginx/staging_access.log;
+    error_log  /var/log/nginx/staging_error.log;
+
+    location / {
+        proxy_pass http://127.0.0.1:8081;
+
+        proxy_http_version 1.1;
+        proxy_set_header Host              $host;
+        proxy_set_header X-Real-IP         $remote_addr;
+        proxy_set_header X-Forwarded-For   $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+}
+
 EOF
 
 nginx -t && systemctl reload nginx
